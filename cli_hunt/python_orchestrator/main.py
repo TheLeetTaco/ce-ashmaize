@@ -298,6 +298,41 @@ def _solve_one_challenge(db_manager, tui_app, stop_event, address, challenge):
             f"https://sm.midnight.gd/api/solution/{address}/{c['challengeId']}/{nonce}"
         )
         submit_response = session.post(submit_url)
+        
+        # Check for 400 errors and track them
+        if submit_response.status_code == 400:
+            error_count = c.get("error_count_400", 0) + 1
+            tui_app.post_message(
+                LogMessage(f"HTTP 400 error for {c['challengeId']} (count: {error_count}/3)")
+            )
+            
+            if error_count >= 3:
+                # Mark as expired after 3 HTTP 400 errors
+                update = {
+                    "status": "expired",
+                    "error_count_400": error_count
+                }
+                updated_status = db_manager.update_challenge(
+                    address, c["challengeId"], update
+                )
+                if updated_status:
+                    tui_app.post_message(
+                        LogMessage(f"Challenge {c['challengeId']} expired after 3 HTTP 400 errors")
+                    )
+                    tui_app.post_message(
+                        ChallengeUpdate(address, c["challengeId"], updated_status)
+                    )
+                return
+            else:
+                # Increment error count and revert to available for retry
+                update = {
+                    "status": "available",
+                    "error_count_400": error_count
+                }
+                db_manager.update_challenge(address, c["challengeId"], update)
+                tui_app.post_message(ChallengeUpdate(address, c["challengeId"], "available"))
+                return
+        
         submit_response.raise_for_status()
         validated_time = datetime.now(timezone.utc)
         tui_app.post_message(
