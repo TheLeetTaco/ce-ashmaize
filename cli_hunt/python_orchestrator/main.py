@@ -573,9 +573,6 @@ def stats_worker(db_manager, stop_event, interval, tui_app):
             total_mined = fetch_wallet_statistics(address)
             if total_mined is not None:
                 db_manager.update_wallet_statistics(address, total_mined)
-                tui_app.post_message(
-                    LogMessage(f"Wallet {address[:10]}... mined: {total_mined:.6f}")
-                )
         
         # Get all stats and calculate total
         all_stats = db_manager.get_all_wallet_statistics()
