@@ -6,7 +6,7 @@ import concurrent.futures
 import subprocess
 import threading
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from curl_cffi import requests
 from tui import ChallengeUpdate, LogMessage, OrchestratorTUI, RefreshTable, StatsUpdate
@@ -467,7 +467,7 @@ def solver_worker(db_manager, stop_event, solve_interval, tui_app, max_solvers):
                             latest_submission = datetime.fromisoformat(
                                 c["latestSubmission"].replace("Z", "+00:00")
                             )
-                            if now > latest_submission:
+                            if now > latest_submission - timedelta(hours=1):
                                 # Expire challenge
                                 updated_status = db_manager.update_challenge(
                                     address, c["challengeId"], {"status": "expired"}
