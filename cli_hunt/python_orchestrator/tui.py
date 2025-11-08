@@ -287,9 +287,6 @@ class OrchestratorTUI(App):
             total_mined = fetch_wallet_statistics(address)
             if total_mined is not None:
                 self.db_manager.update_wallet_statistics(address, total_mined)
-                self.post_message(
-                    LogMessage(f"Wallet {address[:10]}... mined: {total_mined:.6f}")
-                )
         
         # Get all stats and calculate total
         all_stats = self.db_manager.get_all_wallet_statistics()
