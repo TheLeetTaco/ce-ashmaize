@@ -22,6 +22,7 @@ FETCH_INTERVAL = 10 * 60  # 10 minutes
 DEFAULT_MAX_SOLVERS = 2  # Two solvers in parallel by default
 DEFAULT_SOLVE_INTERVAL = 2 * 60  # 2 minutes
 DEFAULT_SAVE_INTERVAL = 10 * 60  # 10 minutes
+DEFAULT_STATS_INTERVAL = 10 * 60  # 10 minutes
 
 
 # --- HTTP Session Setup ---
@@ -549,6 +550,21 @@ def saver_worker(db_manager, stop_event, interval, tui_app):
         if stop_event.is_set():
             break
         tui_app.post_message(LogMessage("Performing periodic save..."))
+        db_manager.save_to_disk()
+    logging.info("Saver thread stopped.")
+
+
+def stats_worker(db_manager, stop_event, interval, tui_app):
+    """Worker thread to periodically update wallet mining statistics."""
+    tui_app.post_message(
+        LogMessage(
+            f"Stats updater started. Updating every {interval / 60:.1f} minutes."
+        )
+    )
+    while not stop_event.is_set():
+        stop_event.wait(interval)
+        if stop_event.is_set():
+            break
         
         # Update wallet statistics from API
         addresses = db_manager.get_addresses()
@@ -568,8 +584,9 @@ def saver_worker(db_manager, stop_event, interval, tui_app):
         # Send stats update to TUI
         tui_app.post_message(StatsUpdate(all_stats, total))
         
+        # Save updated stats to disk
         db_manager.save_to_disk()
-    logging.info("Saver thread stopped.")
+    logging.info("Stats updater thread stopped.")
 
 
 # --- Main Application Logic ---
@@ -640,11 +657,13 @@ def run_orchestrator(args):
         "fetcher": fetcher_worker,
         "solver": solver_worker,
         "saver": saver_worker,
+        "stats": stats_worker,
     }
 
     worker_args = {
         "solve_interval": args.solve_interval,
         "save_interval": args.save_interval,
+        "stats_interval": args.stats_interval,
         "max_solvers": args.max_solvers,
     }
 
@@ -686,6 +705,12 @@ def main():
         type=int,
         default=DEFAULT_SAVE_INTERVAL,
         help=f"Interval in seconds for saving the database to disk (default: {DEFAULT_SAVE_INTERVAL}).",
+    )
+    run_parser.add_argument(
+        "--stats-interval",
+        type=int,
+        default=DEFAULT_STATS_INTERVAL,
+        help=f"Interval in seconds for updating wallet mining statistics (default: {DEFAULT_STATS_INTERVAL}).",
     )
 
     args = parser.parse_args()

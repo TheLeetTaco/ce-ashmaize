@@ -104,6 +104,7 @@ class OrchestratorTUI(App):
         self.run_fetcher_worker()
         self.run_solver_worker()
         self.run_saver_worker()
+        self.run_stats_worker()
 
     def _get_status_display(self, status: str) -> str:
         """Return a user-friendly (emoji) string for a status."""
@@ -267,3 +268,11 @@ class OrchestratorTUI(App):
         saver_func = self.worker_functions["saver"]
         interval = self.worker_args["save_interval"]
         saver_func(self.db_manager, self.stop_event, interval, self)
+
+
+    @work(name="stats", group="workers", thread=True)
+    def run_stats_worker(self) -> None:
+        """Runs the wallet statistics updater logic in a background thread."""
+        stats_func = self.worker_functions["stats"]
+        interval = self.worker_args.get("stats_interval", 10 * 60)  # Default 10 minutes
+        stats_func(self.db_manager, self.stop_event, interval, self)
