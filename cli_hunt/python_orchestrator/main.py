@@ -22,7 +22,7 @@ FETCH_INTERVAL = 10 * 60  # 10 minutes
 DEFAULT_MAX_SOLVERS = 2  # Two solvers in parallel by default
 DEFAULT_SOLVE_INTERVAL = 2 * 60  # 2 minutes
 DEFAULT_SAVE_INTERVAL = 10 * 60  # 10 minutes
-DEFAULT_STATS_INTERVAL = 10 * 60  # 10 minutes
+DEFAULT_STATS_INTERVAL = 60 * 60 * 24  # 24 hours
 
 
 # --- HTTP Session Setup ---

@@ -96,6 +96,7 @@ class OrchestratorTUI(App):
         
         self.refresh_table_structure()
         self.refresh_stats_table()
+        self.run_startup_stats_update()
         
         if self._total_mined > 0:
             self.log_widget.write_line(f"💰 Loaded existing stats: {self._total_mined:.6f} total mined")
@@ -269,10 +270,31 @@ class OrchestratorTUI(App):
         interval = self.worker_args["save_interval"]
         saver_func(self.db_manager, self.stop_event, interval, self)
 
-
     @work(name="stats", group="workers", thread=True)
     def run_stats_worker(self) -> None:
         """Runs the wallet statistics updater logic in a background thread."""
         stats_func = self.worker_functions["stats"]
-        interval = self.worker_args.get("stats_interval", 10 * 60)  # Default 10 minutes
+        interval = self.worker_args.get("stats_interval", 60 * 60 * 24)  # Default 24 hours
         stats_func(self.db_manager, self.stop_event, interval, self)
+        
+    @work(name="startup_stats", thread=True)
+    def run_startup_stats_update(self) -> None:
+        """Fetches fresh wallet statistics on startup."""
+        from main import fetch_wallet_statistics
+        
+        addresses = self.db_manager.get_addresses()
+        for address in addresses:
+            total_mined = fetch_wallet_statistics(address)
+            if total_mined is not None:
+                self.db_manager.update_wallet_statistics(address, total_mined)
+                self.post_message(
+                    LogMessage(f"Wallet {address[:10]}... mined: {total_mined:.6f}")
+                )
+        
+        # Get all stats and calculate total
+        all_stats = self.db_manager.get_all_wallet_statistics()
+        total = sum(all_stats.values())
+        
+        # Send stats update to TUI
+        self.post_message(StatsUpdate(all_stats, total))
+        self.post_message(LogMessage(f"✅ Startup statistics update complete"))
