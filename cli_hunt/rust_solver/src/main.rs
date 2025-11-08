@@ -1,6 +1,10 @@
-use ashmaize::{Rom, RomGenerationType, hash};
+use ashmaize::{hash, Rom, RomGenerationType};
 use clap::Parser;
+use rayon::prelude::*;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 
+const NUM_THREADS: u64 = 2;
 pub const MB: usize = 1024 * 1024;
 pub const GB: usize = 1024 * MB;
 
@@ -49,30 +53,54 @@ fn main() {
     // Initialize AshMaize ROM
     let rom = init_rom(&args.no_pre_mine);
 
-    let mut nonce: u64 = 0; // Start with a random nonce or 0
-
     // Parse difficulty from hex string to u32 mask
     let difficulty_mask = u32::from_str_radix(&args.difficulty, 16).unwrap();
 
-    loop {
-        let preimage = format!(
-            "{0:016x}{1}{2}{3}{4}{5}{6}",
-            nonce,
-            args.address,
-            args.challenge_id,
-            args.difficulty, // This is the hex string, not the number of zero bits
-            args.no_pre_mine,
-            args.latest_submission,
-            args.no_pre_mine_hour
-        );
+    // Compute suffix once
+    let suffix = format!(
+        "{}{}{}{}{}{}",
+        args.address,
+        args.challenge_id,
+        args.difficulty,
+        args.no_pre_mine,
+        args.latest_submission,
+        args.no_pre_mine_hour
+    );
 
-        let hash_result = hash(&preimage.as_bytes(), &rom, 8, 256);
+    // Share ROM across threads (read-only, no mutex needed)
+    let rom = Arc::new(rom);
 
-        if hash_structure_good(&hash_result, difficulty_mask) {
-            println!("{:016x}", nonce);
-            break;
+    let found = Arc::new(AtomicBool::new(false));
+    let result_nonce = Arc::new(AtomicU64::new(0));
+    let start_nonce = 0;
+
+    (0..NUM_THREADS).into_par_iter().for_each(|thread_id| {
+        let rom = Arc::clone(&rom);
+        let mut local_nonce = start_nonce + thread_id as u64;
+        let stride = NUM_THREADS as u64;
+
+        // Reuse preimage buffer across iterations
+        let mut preimage = String::with_capacity(16 + suffix.len());
+
+        while !found.load(Ordering::Relaxed) {
+            preimage.clear();
+            use std::fmt::Write;
+            write!(&mut preimage, "{:016x}{}", local_nonce, &suffix).unwrap();
+
+            // Each hash call allocates ~15-20KB temporarily
+            let hash_result = hash(preimage.as_bytes(), &rom, 8, 256);
+
+            if hash_structure_good(&hash_result, difficulty_mask) {
+                found.store(true, Ordering::Relaxed);
+                result_nonce.store(local_nonce, Ordering::Relaxed);
+                break;
+            }
+
+            local_nonce += stride;
         }
+    });
 
-        nonce += 1;
+    if found.load(Ordering::Relaxed) {
+        println!("{:016x}", result_nonce.load(Ordering::Relaxed));
     }
 }
