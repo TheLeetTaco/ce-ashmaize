@@ -53,35 +53,6 @@ class OrchestratorTUI(App):
 
     TITLE = "Midnight Scavenger Hunt Orchestrator"
     
-    # CSS = """
-    # #stats_container {
-    #     width: 40;
-    #     border: solid $accent;
-    #     padding: 1;
-    # }
-    
-    # #stats_header {
-    #     text-align: center;
-    #     text-style: bold;
-    #     background: $accent;
-    #     color: $text;
-    #     padding: 1;
-    #     margin-bottom: 1;
-    # }
-    
-    # #stats_table {
-    #     height: 100%;
-    # }
-    
-    # #logs {
-    #     width: 1fr;
-    # }
-    
-    # Horizontal {
-    #     height: 15;
-    # }
-    # """
-
     def __init__(
         self, db_manager, worker_functions: dict, worker_args: dict, *args, **kwargs
     ):
