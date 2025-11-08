@@ -9,7 +9,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 
 from curl_cffi import requests
-from tui import ChallengeUpdate, LogMessage, OrchestratorTUI, RefreshTable
+from tui import ChallengeUpdate, LogMessage, OrchestratorTUI, RefreshTable, StatsUpdate
 
 # --- Constants ---
 DB_FILE = "challenges.json"
@@ -46,6 +46,25 @@ def setup_logging():
     # Silence noisy libraries
     logging.getLogger("requests").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+
+# --- Wallet Statistics Functions ---
+def fetch_wallet_statistics(address):
+    """Fetch mining statistics for a wallet from the API."""
+    try:
+        url = f"https://scavenger.prod.gd.midnighttge.io/statistics/{address}"
+        response = session.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        # Extract night_allocation and divide by 1000000
+        night_allocation = data.get("local", {}).get("night_allocation", 0)
+        total_mined = night_allocation / 1000000
+        
+        return total_mined
+    except Exception as e:
+        logging.error(f"Error fetching statistics for {address[:10]}...: {e}")
+        return None
 
 
 # --- DatabaseManager for Thread-Safe Operations ---
@@ -168,6 +187,26 @@ class DatabaseManager:
     def get_challenge_queue(self, address):
         with self._lock:
             return deepcopy(self._db.get(address, {}).get("challenge_queue", []))
+
+    def update_wallet_statistics(self, address, total_mined):
+        """Update the total mined amount for a wallet."""
+        with self._lock:
+            if address in self._db:
+                self._db[address]["total_mined"] = total_mined
+                self._db[address]["stats_updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    def get_wallet_statistics(self, address):
+        """Get the total mined amount for a wallet."""
+        with self._lock:
+            return self._db.get(address, {}).get("total_mined", 0)
+
+    def get_all_wallet_statistics(self):
+        """Get total mined for all wallets."""
+        with self._lock:
+            stats = {}
+            for address, data in self._db.items():
+                stats[address] = data.get("total_mined", 0)
+            return stats
 
     def save_to_disk(self):
         logging.info("Saving database to disk...")
@@ -545,6 +584,25 @@ def saver_worker(db_manager, stop_event, interval, tui_app):
         if stop_event.is_set():
             break
         tui_app.post_message(LogMessage("Performing periodic save..."))
+        
+        # Update wallet statistics from API
+        addresses = db_manager.get_addresses()
+        tui_app.post_message(LogMessage("Updating wallet statistics..."))
+        for address in addresses:
+            total_mined = fetch_wallet_statistics(address)
+            if total_mined is not None:
+                db_manager.update_wallet_statistics(address, total_mined)
+                tui_app.post_message(
+                    LogMessage(f"Wallet {address[:10]}... mined: {total_mined:.6f}")
+                )
+        
+        # Get all stats and calculate total
+        all_stats = db_manager.get_all_wallet_statistics()
+        total = sum(all_stats.values())
+        
+        # Send stats update to TUI
+        tui_app.post_message(StatsUpdate(all_stats, total))
+        
         db_manager.save_to_disk()
     logging.info("Saver thread stopped.")
 
